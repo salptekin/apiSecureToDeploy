@@ -1,23 +1,26 @@
 package com.techproed.apiToDeploy;
 
-import java.util.concurrent.TimeUnit;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
-import org.springframework.security.web.util.matcher.RequestMatcher;
+
+import com.techproed.apiToDeploy.auth.ApplicationUserService;
+import com.techproed.apiToDeploy.jwt.JwtTokenVerifier;
+import com.techproed.apiToDeploy.jwt.JwtUsernameAndPasswordAuthenticationFilter;
+//import com.techproed.apiToDeploy.jwt.JwtUsernameAndPasswordAuthenticationFilter;
 
 @Configuration
 @EnableWebSecurity
@@ -25,9 +28,11 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 public class ApplicationSecurityConfig extends WebSecurityConfigurerAdapter{
 	
 	private final PasswordEncoder passwordEncoder;
+	private final ApplicationUserService applicationUserService;
 	@Autowired
-	public ApplicationSecurityConfig(PasswordEncoder passwordEncoder) {
+	public ApplicationSecurityConfig(PasswordEncoder passwordEncoder, ApplicationUserService applicationUserService) {
 		this.passwordEncoder = passwordEncoder;
+		this.applicationUserService = applicationUserService;
 	}
 
 	@Override
@@ -35,64 +40,74 @@ public class ApplicationSecurityConfig extends WebSecurityConfigurerAdapter{
 		
 		http.
 			csrf().disable().
+			sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).
+			and().
+			addFilter(new JwtUsernameAndPasswordAuthenticationFilter(authenticationManager())).
+			addFilterAfter(new JwtTokenVerifier(), JwtUsernameAndPasswordAuthenticationFilter.class).
 			authorizeRequests().
 			antMatchers("/","index","/css/*","/js/*").permitAll().
-//			antMatchers("/api/**").hasRole(ApplicationUserRoles.STUDENT.name()).//Role-Based Auth
+			antMatchers("/api/**").hasRole(ApplicationUserRoles.STUDENT.name()).//Role-Based Auth
 //			antMatchers("/api/**").hasRole(ApplicationUserRoles.TEACHER.name()).//Role-Based Auth
 			
-
 //			antMatchers(HttpMethod.POST, "/management/api/**").hasAuthority(ApplicationUserPermissions.TEACHER_WRITE.getPermission()).
 //			antMatchers(HttpMethod.PUT, "/management/api/**").hasAuthority(ApplicationUserPermissions.TEACHER_WRITE.getPermission()).
 //			antMatchers(HttpMethod.PATCH, "/management/api/**").hasAuthority(ApplicationUserPermissions.TEACHER_WRITE.getPermission()).
 //			antMatchers(HttpMethod.DELETE, "/management/api/**").hasAuthority(ApplicationUserPermissions.TEACHER_WRITE.getPermission()).
 //			antMatchers(HttpMethod.GET, "/management/api/**").hasAnyRole(ApplicationUserRoles.TEACHER.name(), ApplicationUserRoles.STUDENT.name()).
 			anyRequest().
-			authenticated().
-			and().
-			//httpBasic();//For Basic Authentication
-			formLogin().
-			loginPage("/login").permitAll().
-			defaultSuccessUrl("/successPage", true).
-			and().
-			rememberMe().//This is for 2 weeks as default
-			tokenValiditySeconds((int)TimeUnit.DAYS.toSeconds(10)).//This makes for 10 seconds
-			key("typesomethingverysecure").//Spring boot will use this in HashCode
-			and().
-			logout().
-				logoutUrl("/mylogout").
-				logoutRequestMatcher(new AntPathRequestMatcher("/mylogout", "GET")).
-				clearAuthentication(true).
-				invalidateHttpSession(true).
-				deleteCookies("JSESSIONID", "remember-me").
-				logoutSuccessUrl("/login");
-			
+			authenticated();
+//			and().
+//			//httpBasic();//For Basic Authentication
+//			formLogin().//For form-based authentication
+//				loginPage("/login").permitAll().
+//				defaultSuccessUrl("/successPage", true).
+//			and().
+//			logout().
+//				logoutUrl("/myLogout").
+//				clearAuthentication(true).
+//				invalidateHttpSession(true).
+//				deleteCookies("JSESSIONID").
+//				logoutSuccessUrl("/login");
 		
 	}
 
-	@Override
+//	@Override
+//	@Bean
+//	protected UserDetailsService userDetailsService() {
+//		
+//		//To activate "roles based auth" open "roles", to activate "permission based auth" open "authorities"
+//		
+//		UserDetails suleyman = User.
+//									builder().
+//									username("salptekin").
+//									password(passwordEncoder.encode("password12")).
+//									//roles(ApplicationUserRoles.STUDENT.name()).
+//									authorities(ApplicationUserRoles.STUDENT.getGrantedAuthorities()).
+//									build();
+//		
+//		UserDetails teacher = User.
+//									builder().
+//									username("techproed").
+//									password(passwordEncoder.encode("password1234")).
+//									//roles(ApplicationUserRoles.TEACHER.name()).
+//									authorities(ApplicationUserRoles.TEACHER.getGrantedAuthorities()).
+//									build();
+//		
+//		return new InMemoryUserDetailsManager(suleyman, teacher);
+//
+//	}
+	
 	@Bean
-	protected UserDetailsService userDetailsService() {
-		
-		//To activate "roles based auth" open "roles", to activate "permission based auth" open "authorities"
-		
-		UserDetails suleyman = User.
-									builder().
-									username("salptekin").
-									password(passwordEncoder.encode("password12")).
-									//roles(ApplicationUserRoles.STUDENT.name()).
-									authorities(ApplicationUserRoles.STUDENT.getGrantedAuthorities()).
-									build();
-		
-		UserDetails teacher = User.
-									builder().
-									username("techproed").
-									password(passwordEncoder.encode("password1234")).
-									//roles(ApplicationUserRoles.TEACHER.name()).
-									authorities(ApplicationUserRoles.TEACHER.getGrantedAuthorities()).
-									build();
-		
-		return new InMemoryUserDetailsManager(suleyman, teacher);
+	public DaoAuthenticationProvider daoAuthenticationProvider() {
+		DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+		provider.setPasswordEncoder(passwordEncoder);
+		provider.setUserDetailsService(applicationUserService);
+		return provider;
+	}
 
+	@Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		auth.authenticationProvider(daoAuthenticationProvider());
 	}
 
 }
